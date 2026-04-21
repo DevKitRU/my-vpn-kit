@@ -1,92 +1,118 @@
 # Первая установка с нуля — порядок действий
 
-Это гайд для тех кто **начинает с нуля**: нет VPS, нет VPN, нет работающего Claude Code. Цель — за вечер сделать полностью свою инфраструктуру.
+Это гайд для тех кто начинает с нуля: нет VPS, нет VPN, нет работающего Claude Code локально.
 
 ## Проблема курицы и яйца
 
-Claude Code из РФ **не логинится без VPN** — Anthropic возвращает `403 Forbidden` для запросов с российских IP. А чтобы Claude Code помог тебе настроить VPN, он должен быть уже рабочим. Вот вариант решения:
+Claude Code из РФ **не логинится без VPN** — Anthropic возвращает `403 Forbidden` для запросов с российских IP. А чтобы Claude помог тебе настроить VPN, он должен быть уже рабочим. Плюс на локальной машине (Windows) Claude Code может быть даже не установлен — а поставить npm-пакет без прокси из РФ не получится.
 
-## Правильный порядок
+Платные публичные VPN для решения этой проблемы работают плохо: они кривые, падают, меняют IP, ломают авторизацию Anthropic.
 
-### Шаг 1 — временный публичный VPN
+## Правильный способ — Claude на VPS
 
-Чтобы установить Claude Code и залогиниться, нужен **любой рабочий прокси** сейчас. Варианты:
+Ставим Claude Code **сразу на VPS** (Anthropic пропускает запросы с non-RU IP без вопросов), оттуда Claude ведёт тебя по командам для локальной машины. Никакой временный VPN на локальной машине не нужен.
 
-- **Временная подписка на платный VPN** (Hiddify / v2rayN с купленной подпиской) — хватает пары дней
-- **Бесплатный публичный прокси** — нестабильно, но на логин может хватить
-- **Коллега дал VLESS-ссылку на свой VPS** — самый быстрый путь
+**Этот способ использовал автор репозитория. Работает даже с iPhone** — если нет ноутбука, через SSH-клиент Termius можно настроить всю инфраструктуру прямо с телефона.
 
-Важно: для работы Claude Code в РФ нужно **не просто VPN**, а чтобы **прокси был в OVH/датацентровом IP + Chrome TLS fingerprint** (это умеет sing-box/v2rayN/Hiddify через VLESS Reality).
+### Что потребуется
 
-### Шаг 2 — `claude auth login`
+- **VPS на non-RU IP** ([OVH Kimsufi](https://kimsufi.com/) ~670₽/мес и т.п.)
+- **SSH-клиент**:
+  - ПК/Mac — встроенный терминал (`ssh`) или [Termius](https://termius.com/) (удобнее, с синхронизацией ключей)
+  - iPhone/Android — **Termius** (бесплатный, красивый, работает идеально)
+- **Подписка Claude Pro** или API-ключ
+- Оплата из РФ — [@platipomiru_sup_bot](https://t.me/platipomiru_sup_bot) для виртуальной карты (см. README)
 
-Запусти Claude Code через прокси из шага 1:
+### Шаги
 
+1. **Арендуй VPS** с non-RU IP (Canada/Germany).
+
+2. **SSH на VPS** — с ПК или с телефона через Termius:
+   ```bash
+   ssh root@IP_ТВОЕГО_VPS
+   ```
+
+3. **Поставь Claude Code на VPS** (Ubuntu/Debian):
+   ```bash
+   # Node.js если нет
+   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+   apt install -y nodejs
+   # Claude Code
+   npm install -g @anthropic-ai/claude-code
+   ```
+
+4. **Залогинься** прямо на VPS:
+   ```bash
+   claude auth login
+   ```
+   OAuth-ссылку открывай в любом браузере на любой машине — Anthropic проверяет IP **сервера** который делает API-запрос (это VPS, с non-RU IP → пропускает).
+
+5. **Попроси Claude на VPS поднять 3x-ui** — он выполнит скилл [AndyShaman/3x-ui-skill](https://github.com/AndyShaman/3x-ui-skill), поднимет VLESS Reality сервер на этом же VPS. Получишь VLESS-ссылку.
+
+6. **Попроси Claude на VPS дать команду для твоей локальной Windows/Mac.** Он покажет:
+   ```powershell
+   # Windows (PowerShell от администратора)
+   iwr -useb https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/windows/install.ps1 | iex
+   ```
+   или:
+   ```bash
+   # macOS (Terminal)
+   curl -fsSL https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/macos/install.sh | bash
+   ```
+
+7. **Выполни на локальной машине.** Скрипт попросит VLESS-ссылку из шага 5 — вставляй.
+
+8. **Перезапусти VSCode на локальной машине** (если пользуешься Claude Code локально). Локальный Claude Code подхватит `HTTPS_PROXY=http://127.0.0.1:1080`.
+
+### Почему это работает
+
+- Anthropic блокирует по IP отправителя API-запроса. VPS в Канаде — IP легальный, блокировок нет.
+- Оплату Claude Pro делаешь один раз — через любой способ (@platipomiru_sup_bot, карта знакомого и т.п.).
+- Termius на iPhone позволяет настроить всю инфраструктуру прямо с телефона — ни ноутбук, ни Windows не нужны пока не поставишь клиент на них.
+
+### Совет: SSH с VPS на локальную машину (для продвинутых)
+
+Если хочешь совсем без копипаста — можешь включить **OpenSSH Server на локальной Windows/Mac**, тогда Claude на VPS через `ssh` выполняет команды у тебя сам. Сценарий:
+
+1. На Windows: `Settings → Apps → Optional Features → Add → OpenSSH Server → Install`, затем `Start-Service sshd` и `Set-Service -Name sshd -StartupType Automatic`
+2. На Mac: `System Settings → Sharing → Remote Login → On`
+3. С VPS — настроить обратный SSH-туннель через тот же VPS (VPS имеет публичный IP) или использовать Tailscale/ZeroTier для mesh-соединения
+4. Claude на VPS: `ssh user@твоя_локалка "powershell ..."` — и он сам всё выполняет
+
+Это удобно если настраиваешь несколько машин подряд, но для одноразовой установки my-vpn-kit **копипаст через буфер Termius** проще.
+
+Для копирования файлов между VPS и локальной машиной — в Termius встроенный **SFTP** (вкладка рядом с SSH). Можно тащить конфиги туда-сюда мышкой.
+
+### Что делать если Claude Code на локальной машине тоже нужен
+
+После шагов 1-7 ты получил:
+- Свой VPS с VLESS ✓
+- sing-box на локальной Windows/Mac ✓
+- Переменные `HTTPS_PROXY=http://127.0.0.1:1080` в системе ✓
+
+Чтобы поставить Claude Code локально:
+```powershell
+# Windows
+npm install -g @anthropic-ai/claude-code
+claude auth login
+```
 ```bash
-# Установи env для сессии
-export HTTPS_PROXY=http://127.0.0.1:PORT_твоего_VPN
-export HTTP_PROXY=http://127.0.0.1:PORT_твоего_VPN
-
-# Логин
+# Mac
+npm install -g @anthropic-ai/claude-code
 claude auth login
 ```
 
-Anthropic через браузер откроет OAuth, нажми **«Authorize» ОДИН РАЗ** (второй клик инвалидирует код — известный баг).
+npm пойдёт через sing-box (env HTTPS_PROXY подхватывается), Anthropic увидит IP твоего VPS → залогинится без вопросов.
 
-Если видишь `SSL certificate verification failed` — значит временный VPN ставит свой root CA (подменяет сертификаты). Вырубить такую фичу в настройках VPN.
+## Если нужен только VPN (без Claude Code)
 
-### Шаг 3 — свой VPS и VLESS
+Если тебе нужен VPN для браузера / Telegram / игр:
 
-Теперь у тебя работающий Claude Code. Поднимай собственную инфраструктуру:
-
-- Арендуй VPS ([OVH Kimsufi](https://kimsufi.com/), [Hetzner](https://www.hetzner.com/cloud) — любой с non-RU IP)
-- Поставь 3x-ui через скилл [AndyShaman/3x-ui-skill](https://github.com/AndyShaman/3x-ui-skill) — попроси Claude Code выполнить этот скилл, он сам поднимет сервер
-- Получи свою VLESS-ссылку из 3x-ui панели
-
-### Шаг 4 — my-vpn-kit (этот репо)
-
-Теперь ставим клиента на свою ОС:
-
-**Windows:**
-```powershell
-iwr -useb https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/windows/install.ps1 | iex
-```
-
-**macOS:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/macos/install.sh | bash
-```
-
-Скрипт попросит VLESS-ссылку из шага 3 и подставит её. Установит sing-box как службу с автозапуском.
-
-### Шаг 5 — рестарт VSCode + проверка
-
-После того как `install.sh/install.ps1` отработал — **закрой и открой VSCode** (не просто окно, а весь процесс). Иначе текущий Claude Code продолжит идти через временный VPN из шага 1.
-
-После рестарта Claude Code подхватит новый `HTTPS_PROXY=http://127.0.0.1:1080` (sing-box). Проверь:
-
-```bash
-# Должен показать IP твоего VPS
-curl -x http://127.0.0.1:1080 https://api.ipify.org
-```
-
-### Шаг 6 — убрать временный VPN из шага 1
-
-Теперь можно:
-- Отменить подписку на платный публичный VPN
-- Закрыть / удалить Hiddify / v2rayN — если ставил только ради Claude Code
-
-Твоя инфраструктура — только ты и твой VPS.
-
-## Если Claude Code не был нужен — обратный порядок
-
-Если тебе **не нужен Claude Code** (только VPN для браузера / Telegram / игр), пропусти шаги 1-2. Просто:
-
-1. Поднять VPS (скилл 3x-ui-skill)
+1. Поднять VPS + 3x-ui (через скилл AndyShaman или вручную)
 2. Получить VLESS
-3. Установить my-vpn-kit
+3. Установить my-vpn-kit на свою платформу
 
-Для ручной установки без Claude Code — см. README соответствующей платформы (`windows/README.md`, `macos/README.md`), там есть пошаговые инструкции без автоматизации.
+В этом сценарии Claude Code на VPS тоже полезен (он всё настроит за тебя), но не обязателен. Можно руками по документации.
 
 ## Сколько это стоит
 
