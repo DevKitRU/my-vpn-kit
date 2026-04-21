@@ -21,6 +21,8 @@
 
 Что нужно: VPS с 3x-ui, ваша VLESS-ссылка.
 
+> **Порядок если только начинаешь.** Claude Code из РФ не логинится без VPN-прокси — ловит 403 от Anthropic. Поэтому **Claude Code должен уже работать через КАКОЙ-ТО прокси** (Hiddify / v2rayN / публичный VPN) перед запуском этого скилла. Потом ставишь `my-vpn-kit`, и в конце — убираешь старый прокси. Подробнее — [docs/first-time-setup.md](docs/first-time-setup.md).
+
 ### Windows
 
 Открой PowerShell **от администратора** (Win+X → «Terminal (Administrator)») и выполни:

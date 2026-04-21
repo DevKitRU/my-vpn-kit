@@ -32,11 +32,43 @@ Write-Host "║   my-vpn-kit — sing-box Windows setup    ║"
 Write-Host "╚══════════════════════════════════════════╝`n"
 
 # ──────────────────────────────────────────
+# 0.5. Preflight — предупредить о других VPN
+# ──────────────────────────────────────────
+$conflictingVpn = @()
+foreach ($name in @("Hiddify","v2rayN","xray","sing-box")) {
+    if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
+        $conflictingVpn += $name
+    }
+}
+# Kaspersky VPN — отдельно, по имени адаптера
+$kavpn = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object InterfaceDescription -match "Kaspersky VPN"
+if ($kavpn) { $conflictingVpn += "Kaspersky VPN" }
+
+if ($conflictingVpn.Count -gt 0) {
+    Write-Host "[!] Обнаружены работающие VPN-клиенты:" -ForegroundColor Yellow
+    foreach ($v in $conflictingVpn) { Write-Host "    - $v" -ForegroundColor Yellow }
+    Write-Host ""
+    Write-Host "    sing-box может конфликтовать по портам и TUN-интерфейсу." -ForegroundColor Yellow
+    Write-Host "    Рекомендую: закрой другие VPN (оставь хотя бы один активным)," -ForegroundColor Yellow
+    Write-Host "    дождись установки sing-box, потом убери старые." -ForegroundColor Yellow
+    Write-Host ""
+    $answer = Read-Host "Продолжить установку sing-box параллельно? [y/N]"
+    if ($answer -ne 'y') {
+        Write-Host "Остановлено. Закрой другие VPN и запусти скрипт заново." -ForegroundColor Cyan
+        exit 0
+    }
+}
+
+# ──────────────────────────────────────────
 # 1. Get VLESS from user
 # ──────────────────────────────────────────
 Write-Host "Вставь твою VLESS-ссылку из 3x-ui (начинается с vless://)" -ForegroundColor Cyan
 Write-Host "Пример: vless://abc-def-123@1.2.3.4:443?security=reality&pbk=...&sid=...#name`n"
 $vless = Read-Host "VLESS"
+
+# Очистка от whitespace и CR/LF (частая причина ошибок парсинга при копипасте)
+$vless = $vless.Trim() -replace "`r", "" -replace "`n", "" -replace "`t", ""
+
 if (-not $vless.StartsWith("vless://")) {
     Write-Host "[x] Это не VLESS-ссылка. Должна начинаться с vless://" -ForegroundColor Red
     exit 1
@@ -233,14 +265,21 @@ Write-Host "`n╔═════════════════════
 Write-Host "║   Готово                                  ║"
 Write-Host "╚══════════════════════════════════════════╝`n"
 
+Write-Host "!!! ВАЖНО для Claude Code: закрой VSCode ПОЛНОСТЬЮ (не просто окно, а File → Exit) и открой заново." -ForegroundColor Yellow
+Write-Host "    Переменные среды HTTPS_PROXY читаются процессом ТОЛЬКО при старте — текущий Claude Code их не увидит." -ForegroundColor Yellow
+Write-Host ""
+
 Write-Host "Что дальше:"
-Write-Host "  1. Перезапусти VSCode — Claude Code подхватит HTTPS_PROXY"
-Write-Host "  2. Служба sing-box стартует автоматически при включении компа"
-Write-Host "  3. Логи: $workDir\logs\"
-Write-Host "  4. Если что-то не работает: docs/troubleshooting.md в репо"
+Write-Host "  1. Рестарт VSCode (см. выше, красный текст)"
+Write-Host "  2. Если пользовался Hiddify/v2rayN — можешь их закрыть, больше не нужны"
+Write-Host "  3. Служба sing-box стартует автоматически при включении компа"
+Write-Host "  4. Логи: $workDir\logs\"
+Write-Host "  5. Диагностика: скачай windows/tools/check-vpn.bat из репо"
 Write-Host ""
 Write-Host "Управление:"
 Write-Host "  Get-Service sing-box       # статус"
 Write-Host "  Restart-Service sing-box   # перечитать конфиг"
 Write-Host "  Stop-Service sing-box      # временно выключить"
+Write-Host ""
+Write-Host "Если что-то не работает — https://github.com/DevKitRU/my-vpn-kit/blob/main/docs/troubleshooting.md"
 Write-Host ""
