@@ -1,0 +1,10 @@
+*.log
+*.swp
+.DS_Store
+Thumbs.db
+
+# Никогда не коммитить реальные VLESS ссылки и конфиги с UUID
+*.local.json
+*.real.json
+secrets/
+.env

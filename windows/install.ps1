@@ -1,0 +1,224 @@
+# my-vpn-kit — Windows installer for sing-box
+# https://github.com/DevKitRU/my-vpn-kit
+
+#Requires -Version 5.1
+
+$ErrorActionPreference = "Stop"
+
+# ──────────────────────────────────────────
+# 0. Admin rights check
+# ──────────────────────────────────────────
+$principal = [Security.Principal.WindowsPrincipal]::new(
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "[!] sing-box TUN требует права администратора." -ForegroundColor Yellow
+    Write-Host "Перезапускаю скрипт через UAC..." -ForegroundColor Yellow
+    Start-Process powershell -Verb RunAs -ArgumentList "-NoExit","-Command","irm https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/windows/install.ps1 | iex"
+    exit
+}
+
+Write-Host "`n╔══════════════════════════════════════════╗"
+Write-Host "║   my-vpn-kit — sing-box Windows setup    ║"
+Write-Host "╚══════════════════════════════════════════╝`n"
+
+# ──────────────────────────────────────────
+# 1. Get VLESS from user
+# ──────────────────────────────────────────
+Write-Host "Вставь твою VLESS-ссылку из 3x-ui (начинается с vless://)" -ForegroundColor Cyan
+Write-Host "Пример: vless://abc-def-123@1.2.3.4:443?security=reality&pbk=...&sid=...#name`n"
+$vless = Read-Host "VLESS"
+if (-not $vless.StartsWith("vless://")) {
+    Write-Host "[x] Это не VLESS-ссылка. Должна начинаться с vless://" -ForegroundColor Red
+    exit 1
+}
+
+# ──────────────────────────────────────────
+# 2. Parse VLESS URI
+# ──────────────────────────────────────────
+# Формат: vless://UUID@HOST:PORT?param1=val1&param2=val2#name
+$parsed = @{}
+
+if ($vless -match '^vless://([^@]+)@([^:]+):(\d+)\?([^#]+)') {
+    $parsed.uuid         = $matches[1]
+    $parsed.server       = $matches[2]
+    $parsed.server_port  = [int]$matches[3]
+    $queryString         = $matches[4]
+} else {
+    Write-Host "[x] Не смог распарсить VLESS-ссылку. Проверь формат." -ForegroundColor Red
+    exit 1
+}
+
+foreach ($pair in $queryString.Split('&')) {
+    $kv = $pair.Split('=', 2)
+    if ($kv.Length -eq 2) {
+        $parsed[$kv[0]] = [System.Web.HttpUtility]::UrlDecode($kv[1])
+    }
+}
+
+# Проверяем что это Reality VLESS
+if ($parsed.security -ne 'reality') {
+    Write-Host "[x] Этот скилл рассчитан на VLESS Reality (security=reality)." -ForegroundColor Red
+    Write-Host "    У тебя security=$($parsed.security). Если это TLS — скилл для Reality не подойдёт." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "[+] VLESS распарсен:" -ForegroundColor Green
+Write-Host "    server: $($parsed.server):$($parsed.server_port)"
+Write-Host "    sni:    $($parsed.sni)"
+Write-Host "    flow:   $($parsed.flow)`n"
+
+# ──────────────────────────────────────────
+# 3. Workdir + download sing-box + WinSW
+# ──────────────────────────────────────────
+$workDir = "C:\ProgramData\sing-box"
+if (Test-Path $workDir) {
+    Write-Host "[!] Папка $workDir уже есть. Если это предыдущая установка — удали и запусти снова." -ForegroundColor Yellow
+    $answer = Read-Host "Продолжить (перезапишет файлы)? [y/N]"
+    if ($answer -ne 'y') { exit }
+} else {
+    New-Item -Path $workDir -ItemType Directory -Force | Out-Null
+}
+Set-Location $workDir
+
+# sing-box
+$sbVersion = "1.13.8"
+Write-Host "[.] Качаю sing-box $sbVersion..." -NoNewline
+$sbUrl = "https://github.com/SagerNet/sing-box/releases/download/v$sbVersion/sing-box-$sbVersion-windows-amd64.zip"
+Invoke-WebRequest -Uri $sbUrl -OutFile "$workDir\singbox.zip" -UseBasicParsing
+Expand-Archive -Path "$workDir\singbox.zip" -DestinationPath $workDir -Force
+Move-Item -Path "$workDir\sing-box-$sbVersion-windows-amd64\sing-box.exe" -Destination $workDir -Force
+Remove-Item -Recurse -Path "$workDir\sing-box-$sbVersion-windows-amd64"
+Remove-Item -Path "$workDir\singbox.zip"
+Write-Host " OK" -ForegroundColor Green
+
+# WinSW
+$winswVersion = "2.12.0"
+Write-Host "[.] Качаю WinSW $winswVersion..." -NoNewline
+$winswUrl = "https://github.com/winsw/winsw/releases/download/v$winswVersion/WinSW-x64.exe"
+Invoke-WebRequest -Uri $winswUrl -OutFile "$workDir\sing-box-service.exe" -UseBasicParsing
+Write-Host " OK" -ForegroundColor Green
+
+# ──────────────────────────────────────────
+# 4. Download config template + substitute
+# ──────────────────────────────────────────
+Write-Host "[.] Генерирую конфиг..." -NoNewline
+$tplUrl = "https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/shared/singbox-template.json"
+$config = (Invoke-WebRequest -Uri $tplUrl -UseBasicParsing).Content
+
+$config = $config.Replace("{{UUID}}",        $parsed.uuid)
+$config = $config.Replace("{{SERVER}}",      $parsed.server)
+$config = $config.Replace("{{SERVER_PORT}}", "$($parsed.server_port)")
+$config = $config.Replace("{{PUBLIC_KEY}}",  $parsed.pbk)
+$config = $config.Replace("{{SHORT_ID}}",    $parsed.sid)
+$config = $config.Replace("{{SNI}}",         $parsed.sni)
+$config = $config.Replace("{{FLOW}}",        $parsed.flow)
+$config = $config.Replace("{{FINGERPRINT}}", $parsed.fp)
+
+$config | Set-Content "$workDir\singbox.json" -Encoding UTF8
+
+# Валидация
+& "$workDir\sing-box.exe" check -c "$workDir\singbox.json" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host " FAIL" -ForegroundColor Red
+    Write-Host "    Конфиг sing-box не прошёл проверку. Запусти вручную и смотри ошибку:" -ForegroundColor Red
+    Write-Host "    & `"$workDir\sing-box.exe`" check -c `"$workDir\singbox.json`"" -ForegroundColor Red
+    exit 1
+}
+Write-Host " OK" -ForegroundColor Green
+
+# ──────────────────────────────────────────
+# 5. WinSW XML
+# ──────────────────────────────────────────
+$xml = @"
+<service>
+  <id>sing-box</id>
+  <name>sing-box VPN</name>
+  <description>sing-box VPN with TUN mode (my-vpn-kit)</description>
+  <executable>$workDir\sing-box.exe</executable>
+  <arguments>run -c "$workDir\singbox.json"</arguments>
+  <workingdirectory>$workDir</workingdirectory>
+  <logpath>$workDir\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>2</keepFiles>
+  </log>
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec"/>
+</service>
+"@
+$xml | Set-Content "$workDir\sing-box-service.xml" -Encoding UTF8
+
+# ──────────────────────────────────────────
+# 6. Install + start service
+# ──────────────────────────────────────────
+Write-Host "[.] Устанавливаю Windows Service..." -NoNewline
+
+# Если служба уже есть — удалить
+if (Get-Service -Name "sing-box" -ErrorAction SilentlyContinue) {
+    Stop-Service -Name "sing-box" -Force -ErrorAction SilentlyContinue
+    & "$workDir\sing-box-service.exe" uninstall | Out-Null
+    Start-Sleep -Seconds 2
+}
+
+& "$workDir\sing-box-service.exe" install | Out-Null
+Start-Service -Name "sing-box"
+Start-Sleep -Seconds 3
+Write-Host " OK" -ForegroundColor Green
+
+# ──────────────────────────────────────────
+# 7. Env vars for Claude Code
+# ──────────────────────────────────────────
+foreach ($var in "HTTPS_PROXY","HTTP_PROXY","https_proxy","http_proxy") {
+    [Environment]::SetEnvironmentVariable($var, "http://127.0.0.1:1080", "User")
+}
+Write-Host "[+] HTTPS_PROXY=http://127.0.0.1:1080 (для Claude Code)`n" -ForegroundColor Green
+
+# ──────────────────────────────────────────
+# 8. Verify
+# ──────────────────────────────────────────
+Write-Host "╔══════════════════════════════════════════╗"
+Write-Host "║   Проверка                                ║"
+Write-Host "╚══════════════════════════════════════════╝`n"
+
+# Service
+$svc = Get-Service -Name "sing-box"
+Write-Host "Служба sing-box: $($svc.Status)" -ForegroundColor $(if ($svc.Status -eq "Running") { "Green" } else { "Red" })
+
+# TUN
+$tun = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match 'sing-tun' } | Select-Object -First 1
+if ($tun) {
+    Write-Host "TUN интерфейс: $($tun.Name) ($($tun.Status))" -ForegroundColor Green
+} else {
+    Write-Host "TUN интерфейс: не поднялся" -ForegroundColor Red
+}
+
+# Real traffic test
+try {
+    $myIp = (Invoke-WebRequest -Uri "https://api.ipify.org" -Proxy "http://127.0.0.1:1080" -UseBasicParsing -TimeoutSec 10).Content.Trim()
+    Write-Host "Выходной IP через VPN: $myIp" -ForegroundColor Green
+    if ($myIp -eq $parsed.server) {
+        Write-Host "→ IP совпадает с сервером VLESS. Всё работает." -ForegroundColor Green
+    }
+} catch {
+    Write-Host "[!] Не удалось проверить IP — смотри логи: $workDir\logs\sing-box.err.log" -ForegroundColor Yellow
+}
+
+# ──────────────────────────────────────────
+# 9. Final message
+# ──────────────────────────────────────────
+Write-Host "`n╔══════════════════════════════════════════╗"
+Write-Host "║   Готово                                  ║"
+Write-Host "╚══════════════════════════════════════════╝`n"
+
+Write-Host "Что дальше:"
+Write-Host "  1. Перезапусти VSCode — Claude Code подхватит HTTPS_PROXY"
+Write-Host "  2. Служба sing-box стартует автоматически при включении компа"
+Write-Host "  3. Логи: $workDir\logs\"
+Write-Host "  4. Если что-то не работает: docs/troubleshooting.md в репо"
+Write-Host ""
+Write-Host "Управление:"
+Write-Host "  Get-Service sing-box       # статус"
+Write-Host "  Restart-Service sing-box   # перечитать конфиг"
+Write-Host "  Stop-Service sing-box      # временно выключить"
+Write-Host ""

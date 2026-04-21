@@ -1,0 +1,131 @@
+{
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-remote",
+        "type": "https",
+        "server": "1.1.1.1",
+        "detour": "vless-out"
+      },
+      {
+        "tag": "dns-direct",
+        "type": "udp",
+        "server": "77.88.8.8"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          ".ru", ".рф", ".su",
+          "stalcraft.net", "mail.ru", "ok.ru",
+          "vk.com", "vk.ru", "vkuseraudio.net", "vkuservideo.net", "userapi.com", "vk-cdn.net",
+          "yandex.com", "yandex.net", "yastatic.net", "2gis.com",
+          "sberbank.com", "sber.com", "tinkoff.com", "alfabank.com",
+          "wildberries.com", "ozon.com", "avito.com",
+          "xsolla.com", "gaijin.net", "warface.com",
+          "steam-chat.com", "steampowered.com", "steamgames.com"
+        ],
+        "server": "dns-direct"
+      }
+    ],
+    "strategy": "prefer_ipv4",
+    "final": "dns-remote"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "singbox1",
+      "address": ["172.19.0.1/30"],
+      "mtu": 9000,
+      "auto_route": true,
+      "strict_route": false,
+      "stack": "system"
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-out",
+      "server": "{{SERVER}}",
+      "server_port": {{SERVER_PORT}},
+      "uuid": "{{UUID}}",
+      "flow": "{{FLOW}}",
+      "tls": {
+        "enabled": true,
+        "server_name": "{{SNI}}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "{{FINGERPRINT}}"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{PUBLIC_KEY}}",
+          "short_id": "{{SHORT_ID}}"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": ["geoip-ru"],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": [
+          ".ru", ".рф", ".su",
+          "stalcraft.net", "mail.ru", "ok.ru",
+          "vk.com", "vk.ru", "vkuseraudio.net", "vkuservideo.net", "userapi.com", "vk-cdn.net",
+          "yandex.com", "yandex.net", "yastatic.net", "2gis.com",
+          "sberbank.com", "sber.com", "tinkoff.com", "alfabank.com",
+          "wildberries.com", "ozon.com", "avito.com",
+          "xsolla.com", "gaijin.net", "warface.com",
+          "steam-chat.com", "steampowered.com", "steamgames.com"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "geoip-ru",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
+        "download_detour": "direct",
+        "update_interval": "7d"
+      }
+    ],
+    "auto_detect_interface": true,
+    "default_domain_resolver": "dns-direct",
+    "final": "vless-out"
+  }
+}
