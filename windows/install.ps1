@@ -1,5 +1,14 @@
 # my-vpn-kit — Windows installer for sing-box
 # https://github.com/DevKitRU/my-vpn-kit
+#
+# Использование:
+#   iwr -useb https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/windows/install.ps1 | iex
+#   → спросит какой пресет использовать: default / dev / gaming / minimalist
+
+param(
+    [ValidateSet("default","dev","gaming","minimalist","")]
+    [string]$Preset = ""
+)
 
 #Requires -Version 5.1
 
@@ -100,10 +109,23 @@ Invoke-WebRequest -Uri $winswUrl -OutFile "$workDir\sing-box-service.exe" -UseBa
 Write-Host " OK" -ForegroundColor Green
 
 # ──────────────────────────────────────────
-# 4. Download config template + substitute
+# 4. Select preset + download + substitute
 # ──────────────────────────────────────────
-Write-Host "[.] Генерирую конфиг..." -NoNewline
-$tplUrl = "https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/shared/singbox-template.json"
+if (-not $Preset) {
+    Write-Host ""
+    Write-Host "Какой пресет маршрутизации использовать?" -ForegroundColor Cyan
+    Write-Host "  default      — стандартный split: РФ direct, остальное через VPN"
+    Write-Host "  dev          — только AI и dev-сервисы (Claude, OpenAI, GitHub) через VPN"
+    Write-Host "  gaming       — РФ-игры direct, зарубежное через VPN"
+    Write-Host "  minimalist   — только Anthropic+OpenAI через VPN, всё остальное direct"
+    $Preset = (Read-Host "Пресет [default/dev/gaming/minimalist] (default)").ToLower()
+    if (-not $Preset) { $Preset = "default" }
+}
+
+$presetFile = if ($Preset -eq "default") { "singbox-template.json" } else { "presets/$Preset.json" }
+$tplUrl = "https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/shared/$presetFile"
+
+Write-Host "[.] Генерирую конфиг из пресета '$Preset'..." -NoNewline
 $config = (Invoke-WebRequest -Uri $tplUrl -UseBasicParsing).Content
 
 $config = $config.Replace("{{UUID}}",        $parsed.uuid)
