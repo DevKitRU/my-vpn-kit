@@ -109,6 +109,18 @@ if [[ "${params[security]:-}" != "reality" ]]; then
     exit 1
 fi
 
+if [[ -z "$UUID" || -z "$SERVER" || -z "$SERVER_PORT" ]]; then
+    err "Не смог прочитать UUID, сервер или порт из VLESS-ссылки."
+    exit 1
+fi
+
+for key in pbk sni; do
+    if [[ -z "${params[$key]:-}" ]]; then
+        err "В VLESS-ссылке не хватает параметра: $key"
+        exit 1
+    fi
+done
+
 ok "VLESS распарсен: $SERVER:$SERVER_PORT (sni=${params[sni]})"
 
 # ──────────────────────────────────────────
@@ -156,7 +168,7 @@ CONFIG="${CONFIG//\{\{FLOW\}\}/${params[flow]:-xtls-rprx-vision}}"
 CONFIG="${CONFIG//\{\{SNI\}\}/${params[sni]}}"
 CONFIG="${CONFIG//\{\{FINGERPRINT\}\}/${params[fp]:-chrome}}"
 CONFIG="${CONFIG//\{\{PUBLIC_KEY\}\}/${params[pbk]}}"
-CONFIG="${CONFIG//\{\{SHORT_ID\}\}/${params[sid]}}"
+CONFIG="${CONFIG//\{\{SHORT_ID\}\}/${params[sid]:-}}"
 
 echo "$CONFIG" > ~/.config/sing-box/config.json
 

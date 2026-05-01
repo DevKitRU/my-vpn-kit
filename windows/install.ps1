@@ -1,4 +1,4 @@
-# my-vpn-kit — Windows installer for sing-box
+﻿# my-vpn-kit — Windows installer for sing-box
 # https://github.com/DevKitRU/my-vpn-kit
 #
 # Использование:
@@ -23,7 +23,20 @@ $principal = [Security.Principal.WindowsPrincipal]::new(
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "[!] sing-box TUN требует права администратора." -ForegroundColor Yellow
     Write-Host "Перезапускаю скрипт через UAC..." -ForegroundColor Yellow
-    Start-Process powershell -Verb RunAs -ArgumentList "-NoExit","-Command","irm https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/windows/install.ps1 | iex"
+    $installUrl = "https://raw.githubusercontent.com/DevKitRU/my-vpn-kit/main/windows/install.ps1"
+    if ($PSCommandPath) {
+        $relaunchArgs = @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
+        if ($Preset) { $relaunchArgs += @("-Preset", $Preset) }
+    } else {
+        if ($Preset) {
+            $command = "& ([scriptblock]::Create((irm '$installUrl'))) -Preset '$Preset'"
+        } else {
+            $command = "irm '$installUrl' | iex"
+        }
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+        $relaunchArgs = @("-NoExit", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedCommand)
+    }
+    Start-Process powershell -Verb RunAs -ArgumentList $relaunchArgs
     exit
 }
 
@@ -93,7 +106,7 @@ if ($vless -match '^vless://([^@]+)@([^:]+):(\d+)\?([^#]+)') {
 foreach ($pair in $queryString.Split('&')) {
     $kv = $pair.Split('=', 2)
     if ($kv.Length -eq 2) {
-        $parsed[$kv[0]] = [System.Web.HttpUtility]::UrlDecode($kv[1])
+        $parsed[$kv[0]] = [System.Net.WebUtility]::UrlDecode($kv[1])
     }
 }
 
@@ -103,6 +116,16 @@ if ($parsed.security -ne 'reality') {
     Write-Host "    У тебя security=$($parsed.security). Если это TLS — скилл для Reality не подойдёт." -ForegroundColor Red
     exit 1
 }
+
+foreach ($key in @("uuid", "server", "server_port", "pbk", "sni")) {
+    if (-not $parsed[$key]) {
+        Write-Host "[x] В VLESS-ссылке не хватает параметра: $key" -ForegroundColor Red
+        exit 1
+    }
+}
+if (-not $parsed.flow) { $parsed.flow = "xtls-rprx-vision" }
+if (-not $parsed.fp)   { $parsed.fp = "chrome" }
+if (-not $parsed.sid)  { $parsed.sid = "" }
 
 Write-Host "[+] VLESS распарсен:" -ForegroundColor Green
 Write-Host "    server: $($parsed.server):$($parsed.server_port)"
