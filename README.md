@@ -24,6 +24,12 @@
   └─ ios/       ->  Shadowrocket
 ```
 
+## AI context для Codex / Claude
+
+Если открываешь этот репозиторий через AI-агента, начни с [AGENTS.md](AGENTS.md), затем с [docs/ai_context/PROJECT_MAP.md](docs/ai_context/PROJECT_MAP.md).
+
+Там коротко описано, какие файлы читать для Windows, macOS, iOS и shared presets, а также где опасные зоны: реальные VLESS-ссылки, IP, ключи, routing presets и установщики.
+
 ## Быстрый старт
 
 Что нужно: VPS с 3x-ui, ваша VLESS-ссылка.
@@ -72,7 +78,7 @@ iOS я настраивал через Shadowrocket. Одного установ
 
 - **Split routing под РФ.** STALCRAFT, Mail.ru Games, Сбер, Тинькофф и Xsolla идут напрямую с RU IP. Claude, OpenAI, GitHub и другие внешние сервисы идут через VPN.
 - **Windows Service.** sing-box стартует при включении компьютера и поднимает TUN до входа пользователя.
-- **Пресеты.** [configs/presets/](configs/presets/) содержит dev, gaming и minimalist.
+- **Пресеты.** [shared/presets/](shared/presets/) содержит dev, gaming и minimalist.
 - **Troubleshooting.** [docs/troubleshooting.md](docs/troubleshooting.md) собран по ошибкам, которые я ловил сам.
 
 ## Связка со скиллом сервера
